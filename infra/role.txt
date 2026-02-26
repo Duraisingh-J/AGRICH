@@ -1,0 +1,7 @@
+DevOps / Infra Engineer
+
+Docker
+Deployment
+CI/CD
+Monitoring
+Security hardening

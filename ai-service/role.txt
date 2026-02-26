@@ -1,0 +1,6 @@
+AI Engineer
+
+Price prediction
+OCR verification
+Fraud detection
+Model APIs

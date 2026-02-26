@@ -1,0 +1,8 @@
+Mobile Engineer (Flutter)
+
+UI/UX
+State management
+API integration
+QR scanning
+
+

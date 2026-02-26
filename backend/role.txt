@@ -1,0 +1,6 @@
+Backend Engineer
+
+FastAPI
+PostgreSQL
+Redis
+Auth & Role management
