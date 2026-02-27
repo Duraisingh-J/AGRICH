@@ -1,0 +1,19 @@
+Farmers should analyze predicted market prices before harvesting and selling crops.
+
+High disease severity reduces yield significantly and affects final revenue.
+
+Excess rainfall increases fungal disease risk, especially in tomatoes and rice.
+
+Low rainfall reduces yield but can improve storage quality in certain crops.
+
+Harvest timing impacts price. Selling during peak supply lowers profit.
+
+If predicted market price is high, selling within 3-5 days is recommended.
+
+If predicted market price is low, holding the stock may improve revenue.
+
+Fertilizer usage directly impacts yield. Overuse can damage soil quality.
+
+Soil quality above 7 (on a 1-10 scale) significantly improves productivity.
+
+Cold storage can increase selling flexibility if prices are temporarily low.
