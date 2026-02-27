@@ -173,21 +173,41 @@ def create_app() -> FastAPI:
     async def deep_health_check() -> dict[str, Any]:
         """Detailed health checks for database, blockchain, Redis, and IPFS."""
 
-        database_healthy = False
-        try:
-            async with SessionLocal() as session:
-                await session.execute(text("SELECT 1"))
-                database_healthy = True
-        except Exception:
-            logging.getLogger("app.health").exception("Database health check failed")
+        timeout = settings.healthcheck_timeout_seconds
 
-        blockchain_healthy = await blockchain_service.is_blockchain_healthy()
-        redis_healthy = await cache_service.is_healthy()
-        ipfs_healthy = await ipfs_service.is_healthy()
+        async def _database_check() -> bool:
+            try:
+                async with SessionLocal() as session:
+                    await asyncio.wait_for(session.execute(text("SELECT 1")), timeout=timeout)
+                    return True
+            except Exception:
+                logging.getLogger("app.health").warning("Database health check failed")
+                return False
+
+        async def _safe_bool(callable_obj) -> bool:
+            try:
+                return bool(await asyncio.wait_for(callable_obj(), timeout=timeout))
+            except Exception:
+                return False
+
+        database_healthy, blockchain_healthy, redis_healthy, ipfs_healthy = await asyncio.gather(
+            _database_check(),
+            _safe_bool(blockchain_service.is_blockchain_healthy),
+            _safe_bool(cache_service.is_healthy),
+            _safe_bool(ipfs_service.is_healthy),
+            return_exceptions=False,
+        )
 
         listener = get_listener(settings.blockchain_poll_interval)
-        backlog_size = await get_event_backlog_size()
-        last_block = await get_last_processed_block()
+
+        try:
+            backlog_size = await asyncio.wait_for(get_event_backlog_size(), timeout=timeout)
+        except Exception:
+            backlog_size = 0
+        try:
+            last_block = await asyncio.wait_for(get_last_processed_block(), timeout=timeout)
+        except Exception:
+            last_block = None
 
         services = {
             "database": {"healthy": database_healthy},

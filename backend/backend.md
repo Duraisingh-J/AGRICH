@@ -285,3 +285,12 @@ python -m app.workers.blockchain_listener
 - Phase 4: ✅ Complete
 
 Backend is now infrastructure-ready and reliability-hardened for blockchain-dependent workloads with graceful degradation.
+
+---
+
+## Render Deployment Checklist
+- set `DATABASE_URL`
+- set `JWT_SECRET`
+- set `APP_ENV=production`
+- run `alembic upgrade head` before traffic
+- listener disabled by default (`ENABLE_BLOCKCHAIN_LISTENER=false`)

@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     app_debug: bool = False
     app_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_json: bool = Field(default=False, alias="LOG_JSON")
+    strict_startup: bool = Field(default=False, alias="STRICT_STARTUP")
+    healthcheck_timeout_seconds: float = Field(default=2.5, alias="HEALTHCHECK_TIMEOUT_SECONDS")
 
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
@@ -53,6 +55,20 @@ class Settings(BaseSettings):
     blockchain_poll_interval: float = Field(default=3.0, alias="BLOCKCHAIN_POLL_INTERVAL")
     listener_heartbeat_cycles: int = Field(default=20, alias="LISTENER_HEARTBEAT_CYCLES")
     ipfs_api_url: str = Field(default="http://localhost:5001", alias="IPFS_API_URL")
+
+    @model_validator(mode="after")
+    def validate_production_requirements(self) -> "Settings":
+        """Validate strict/production startup requirements."""
+
+        enforce_required = self.app_env == "production" or self.strict_startup
+
+        if enforce_required and not self.database_url:
+            raise ValueError("DATABASE_URL is required in production/strict startup mode")
+
+        if enforce_required and not self.jwt_secret:
+            raise ValueError("JWT_SECRET is required in production/strict startup mode")
+
+        return self
 
 
 @lru_cache(maxsize=1)
