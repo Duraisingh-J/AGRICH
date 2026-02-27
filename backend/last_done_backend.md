@@ -305,3 +305,101 @@ Upgraded AGRICHAIN backend for blockchain-ready architecture with migration-firs
 - add event persistence table for cross-restart idempotency
 - add contract-aware integration tests against local Hardhat node
 - add CI job for migration + validator checks
+
+---
+
+## Phase 4 Summary (Completed)
+
+**Date:** 2026-02-27
+
+Hardened backend reliability and durability for blockchain-optional production operation.
+
+### 1) Event Durability (Critical)
+- Added durable blockchain event model: `backend/app/models/blockchain_event.py`
+- Added migration: `backend/db/migrations/versions/0002_blockchain_events.py`
+- Implemented constraints and indexes:
+  - unique `(tx_hash, log_index)`
+  - indexed `status`
+  - indexed `block_number`
+  - indexed `next_retry_at`
+
+### 2) Processor Reliability Hardening
+- Updated `backend/app/workers/event_processor.py` to support:
+  - durable upsert-based idempotency
+  - exactly-once semantics via persisted event state
+  - transaction-safe processing with rollback protection
+  - duplicate protection across restarts
+  - retry metadata with exponential backoff
+  - helper: `mark_event_failed(event_id, reason)`
+  - retriable backlog execution: `process_retriable_events()`
+  - metrics helpers:
+    - `get_event_backlog_size()`
+    - `get_last_processed_block()`
+
+### 3) Listener Lifecycle Management
+- Updated `backend/app/workers/blockchain_listener.py`:
+  - singleton/shared listener instance to prevent duplicates
+  - heartbeat logs every configurable cycles
+  - safe passive behavior when chain unavailable
+  - graceful stop support
+  - exported uptime/backlog/last-block helpers
+- Integrated listener startup/shutdown in FastAPI lifespan (`backend/app/main.py`) with env flags:
+  - `ENABLE_BLOCKCHAIN_LISTENER`
+  - `BLOCKCHAIN_POLL_INTERVAL`
+
+### 4) Backlog & Lag Monitoring
+- Extended deep health endpoint (`GET /system/health/deep`) with:
+  - `listener.running`
+  - `listener.backlog_size`
+  - `listener.last_block`
+  - `listener.uptime_seconds`
+
+### 5) Blockchain Service Resilience
+- Hardened `backend/app/services/blockchain_service.py`:
+  - timeout guards for RPC and contract operations
+  - structured error classification types:
+    - `BlockchainUnavailable`
+    - `ContractNotConfigured`
+    - `TransactionFailed`
+  - circuit-breaker style cooldown on repeated failures
+  - in-memory health cache TTL
+  - guaranteed mock fallback on failure (API never crashes)
+
+### 6) Redis Optional Hardening
+- Enhanced `backend/app/services/cache_service.py`:
+  - connection retry policy
+  - timeout guards
+  - safe JSON serialization/deserialization
+  - fallback to no-cache mode if Redis unavailable
+
+### 7) Production Logging Polish
+- Added correlation ID middleware in `backend/app/main.py`
+- Added request completion logs with latency
+- Added optional JSON logging via env:
+  - `LOG_JSON`
+- Improved lifecycle, retry, and event logs for observability
+
+### 8) Integration Test Harness (No Real Chain Required)
+- Added `backend/app/utils/integration_validator.py`:
+  - simulates blockchain events in mock mode
+  - validates state transitions in DB
+  - validates idempotency on duplicate events
+  - validates retry metadata behavior
+
+### 9) Config Updates
+- Extended `backend/app/config.py` with Phase 4 settings:
+  - listener toggles and heartbeat
+  - blockchain timeout/cooldown/failure thresholds
+  - Redis timeout/retries
+  - JSON logging option
+
+### 10) Validation
+- Applied migrations successfully:
+  - `alembic upgrade head` (includes `0002_blockchain_events`)
+- Compiled all Phase 4 changed modules successfully.
+
+### Current Backend Status
+- Phase 1 ✅
+- Phase 2 ✅
+- Phase 3 ✅
+- Phase 4 ✅ (reliability hardening complete)

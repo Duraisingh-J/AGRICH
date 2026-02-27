@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     app_port: int = 8000
     app_debug: bool = False
     app_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    log_json: bool = Field(default=False, alias="LOG_JSON")
 
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
@@ -32,6 +33,8 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL")
+    redis_timeout_seconds: float = Field(default=2.5, alias="REDIS_TIMEOUT_SECONDS")
+    redis_connect_retries: int = Field(default=2, alias="REDIS_CONNECT_RETRIES")
 
     jwt_secret: str = Field(alias="JWT_SECRET")
     jwt_algorithm: str = "HS256"
@@ -42,6 +45,13 @@ class Settings(BaseSettings):
     batch_contract_address: str | None = Field(default=None, alias="BATCH_CONTRACT_ADDRESS")
     batch_contract_abi_path: str | None = Field(default=None, alias="BATCH_CONTRACT_ABI_PATH")
     blockchain_default_sender: str | None = Field(default=None, alias="BLOCKCHAIN_DEFAULT_SENDER")
+    blockchain_request_timeout_seconds: float = Field(default=20.0, alias="BLOCKCHAIN_REQUEST_TIMEOUT_SECONDS")
+    blockchain_failure_threshold: int = Field(default=3, alias="BLOCKCHAIN_FAILURE_THRESHOLD")
+    blockchain_cooldown_seconds: int = Field(default=30, alias="BLOCKCHAIN_COOLDOWN_SECONDS")
+    blockchain_health_cache_ttl_seconds: int = Field(default=10, alias="BLOCKCHAIN_HEALTH_CACHE_TTL_SECONDS")
+    enable_blockchain_listener: bool = Field(default=False, alias="ENABLE_BLOCKCHAIN_LISTENER")
+    blockchain_poll_interval: float = Field(default=3.0, alias="BLOCKCHAIN_POLL_INTERVAL")
+    listener_heartbeat_cycles: int = Field(default=20, alias="LISTENER_HEARTBEAT_CYCLES")
     ipfs_api_url: str = Field(default="http://localhost:5001", alias="IPFS_API_URL")
 
 
