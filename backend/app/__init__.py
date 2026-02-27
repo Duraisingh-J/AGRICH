@@ -1,0 +1,1 @@
+"""AGRICHAIN backend application package."""
