@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-load_dotenv()   # 🔥 Load environment variables first
+load_dotenv()
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -29,7 +29,7 @@ def chat(request: ChatRequest):
 
         return {"response": response}
 
-    except Exception as e:
+    except Exception:
         print("ERROR OCCURRED:")
         traceback.print_exc()
         return {"response": "Internal server error."}

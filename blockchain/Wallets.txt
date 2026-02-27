@@ -1,0 +1,4 @@
+# Government Wallet Address
+
+Address: 0x820b3c600d70adb61Aa1d70b4743c7b0a55F7037
+Private Key: 23c8f49038f433eae3821e02a5c6b2010e937aa3bb6b5b328f57f84ab2877845
