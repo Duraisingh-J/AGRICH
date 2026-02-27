@@ -1,6 +1,7 @@
 """Async SQLAlchemy database configuration and dependencies."""
 
 from collections.abc import AsyncGenerator
+import ssl
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -20,9 +21,12 @@ class Base(DeclarativeBase):
 settings = get_settings()
 database_url_normalized = settings.database_url.lower()
 
-connect_args: dict[str, bool] = {}
+# Proper SSL handling for Neon + asyncpg
+connect_args: dict = {}
+
 if "sslmode=require" in database_url_normalized:
-    connect_args = {"ssl": True}
+    ssl_context = ssl.create_default_context()
+    connect_args["ssl"] = ssl_context
 
 engine: AsyncEngine = create_async_engine(
     settings.database_url,
@@ -42,6 +46,5 @@ SessionLocal = async_sessionmaker(
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async SQLAlchemy session for request scope."""
-
     async with SessionLocal() as session:
         yield session
