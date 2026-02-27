@@ -18,7 +18,7 @@ class AgrichainApp extends StatefulWidget {
 class _AgrichainAppState extends State<AgrichainApp> {
   final I18nController _i18n = I18nController();
   ThemeMode _themeMode = ThemeMode.light;
-  AppRole? _role;
+  AuthSession? _session;
   bool _showSplash = true;
 
   @override
@@ -62,18 +62,19 @@ class _AgrichainAppState extends State<AgrichainApp> {
             },
             child: _showSplash
                 ? SplashScreen(tagline: _i18n.t('tagline'))
-                : _role == null
+                : _session == null
                 ? AuthFlow(
                     i18n: _i18n,
-                    onAuthenticated: (role) => setState(() => _role = role),
+                    onAuthenticated: (session) =>
+                        setState(() => _session = session),
                   )
                 : RoleShell(
-                    role: _role!,
+                    session: _session!,
                     i18n: _i18n,
                     themeMode: _themeMode,
                     onThemeModeChanged: (mode) =>
                         setState(() => _themeMode = mode),
-                    onLogout: () => setState(() => _role = null),
+                    onLogout: () => setState(() => _session = null),
                   ),
           ),
         );

@@ -1,7 +1,9 @@
 import 'dart:math' as math;
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import '../../app/theme.dart';
 import '../../core/i18n.dart';
@@ -12,14 +14,14 @@ import '../consumer/product_journey_screen.dart';
 class RoleShell extends StatefulWidget {
   const RoleShell({
     super.key,
-    required this.role,
+    required this.session,
     required this.onLogout,
     required this.onThemeModeChanged,
     required this.themeMode,
     required this.i18n,
   });
 
-  final AppRole role;
+  final AuthSession session;
   final VoidCallback onLogout;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final ThemeMode themeMode;
@@ -30,7 +32,104 @@ class RoleShell extends StatefulWidget {
 }
 
 class _RoleShellState extends State<RoleShell> {
+  static const String _backendBaseUrl = String.fromEnvironment(
+    'BACKEND_OTP_BASE_URL',
+    defaultValue: 'http://127.0.0.1:8000/api/v1',
+  );
+  static const String _backendBaseUrls = String.fromEnvironment(
+    'BACKEND_OTP_BASE_URLS',
+    defaultValue:
+        'http://127.0.0.1:8000/api/v1,http://10.0.2.2:8000/api/v1,http://localhost:8000/api/v1',
+  );
+
   int _index = 0;
+  DashboardPayload? _dashboard;
+  bool _dashboardLoading = false;
+  String? _dashboardError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboard();
+  }
+
+  Future<void> _loadDashboard() async {
+    if (_dashboardLoading) {
+      return;
+    }
+    setState(() {
+      _dashboardLoading = true;
+      _dashboardError = null;
+    });
+
+    for (final baseUrl in _backendBaseUrlCandidates()) {
+      try {
+        final response = await http
+            .get(
+              Uri.parse(_apiUrl(baseUrl, '/auth/mobile-dashboard')),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ${widget.session.accessToken}',
+              },
+            )
+            .timeout(const Duration(seconds: 12));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final body = jsonDecode(response.body) as Map<String, dynamic>;
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _dashboard = DashboardPayload.fromJson(body);
+            _dashboardLoading = false;
+            _dashboardError = null;
+          });
+          return;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _dashboardLoading = false;
+      _dashboardError = 'Unable to fetch live dashboard data from backend.';
+    });
+  }
+
+  List<String> _backendBaseUrlCandidates() {
+    final seen = <String>{};
+    final candidates = <String>[];
+
+    void addCandidate(String value) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || seen.contains(trimmed)) {
+        return;
+      }
+      seen.add(trimmed);
+      candidates.add(trimmed);
+    }
+
+    addCandidate(_backendBaseUrl);
+    for (final item in _backendBaseUrls.split(',')) {
+      addCandidate(item);
+    }
+    return candidates;
+  }
+
+  String _apiUrl(String baseUrl, String path) {
+    final normalizedBase = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    if (normalizedBase.endsWith('/api/v1')) {
+      return '$normalizedBase$normalizedPath';
+    }
+    return '$normalizedBase/api/v1$normalizedPath';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +218,10 @@ class _RoleShellState extends State<RoleShell> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(widget.role.icon, color: AppPalette.brandGreenDark),
+            child: Icon(
+              widget.session.role.icon,
+              color: AppPalette.brandGreenDark,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -131,8 +233,11 @@ class _RoleShellState extends State<RoleShell> {
             ),
           ),
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.notifications_rounded, color: Colors.white),
+            onPressed: _loadDashboard,
+            icon: Icon(
+              _dashboardLoading ? Icons.sync_rounded : Icons.refresh_rounded,
+              color: Colors.white,
+            ),
           ),
         ],
       ),
@@ -157,18 +262,27 @@ class _RoleShellState extends State<RoleShell> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Offline mode available',
+              _dashboardError ??
+                  (_dashboardLoading
+                      ? 'Syncing live backend dashboard...'
+                      : 'Live backend mode active'),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
-          const Icon(Icons.circle, size: 9, color: AppPalette.brandGreen),
+          Icon(
+            Icons.circle,
+            size: 9,
+            color: _dashboardError == null
+                ? AppPalette.brandGreen
+                : AppPalette.warningAmber,
+          ),
         ],
       ),
     );
   }
 
   List<_TabConfig> _tabs() {
-    switch (widget.role) {
+    switch (widget.session.role) {
       case AppRole.farmer:
         return [
           _TabConfig(
@@ -256,13 +370,15 @@ class _RoleShellState extends State<RoleShell> {
         padding: const EdgeInsets.all(16),
         children: [
           Text(
-            'Good Morning, Karthik',
+            'Good Morning, ${_dashboard?.greetingName.isNotEmpty == true ? _dashboard!.greetingName : widget.session.name}',
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           const SizedBox(height: 12),
           _premiumBanner(
-            title: 'Smart Farm Summary',
-            subtitle: 'Yield confidence: High · Compliance: Up to date',
+            title: _dashboard?.summaryTitle ?? 'Smart Farm Summary',
+            subtitle:
+                _dashboard?.summarySubtitle ??
+                'Yield confidence: High · Compliance: Up to date',
             icon: Icons.eco_rounded,
           ),
           const SizedBox(height: 12),
@@ -283,7 +399,8 @@ class _RoleShellState extends State<RoleShell> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '31°C · Light breeze · Clouds moving',
+                    _dashboard?.weatherText ??
+                        '31°C · Light breeze · Clouds moving',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -302,14 +419,19 @@ class _RoleShellState extends State<RoleShell> {
                   child: CustomPaint(painter: _LineChartPainter()),
                 ),
                 const SizedBox(height: 8),
-                const Row(
+                Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.trending_up_rounded,
                       color: AppPalette.brandGreen,
                     ),
-                    SizedBox(width: 8),
-                    Text('Tomato up 6% tomorrow'),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _dashboard?.pricePredictionText ??
+                            'Tomato up 6% tomorrow',
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -325,13 +447,16 @@ class _RoleShellState extends State<RoleShell> {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      const CircularProgressIndicator(
-                        value: 0.86,
+                      CircularProgressIndicator(
+                        value: ((_dashboard?.freshnessScore ?? 86) / 100).clamp(
+                          0.0,
+                          1.0,
+                        ),
                         strokeWidth: 8,
                         color: AppPalette.brandGreen,
                       ),
                       Text(
-                        '86',
+                        '${_dashboard?.freshnessScore ?? 86}',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontFamily: 'Space Grotesk',
                         ),
@@ -373,30 +498,44 @@ class _RoleShellState extends State<RoleShell> {
   }
 
   Widget _myBatches() {
+    final batchItems =
+        _dashboard?.recentBatches ?? const <DashboardBatchItem>[];
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _premiumBanner(
           title: 'Batch Operations',
-          subtitle: '2 Active batches · 1 Pending transfer',
+          subtitle:
+              'Active: ${_dashboard?.activeBatchesCount ?? 0} · Pending: ${_dashboard?.pendingTransfersCount ?? 0}',
           icon: Icons.inventory_2_rounded,
         ),
         const SizedBox(height: 12),
-        _batchCard(
-          id: 'Batch #0x7829',
-          subtitle: 'Organic Tomato · 320kg',
-          icon: Icons.eco_rounded,
-          actionLabel: 'Track',
-          primary: true,
-        ),
-        const SizedBox(height: 12),
-        _batchCard(
-          id: 'Batch #0x7931',
-          subtitle: 'Hybrid Chili · 180kg',
-          icon: Icons.local_shipping_rounded,
-          actionLabel: 'Details',
-          primary: false,
-        ),
+        if (batchItems.isEmpty)
+          _batchCard(
+            id: 'No batches yet',
+            subtitle: 'Create your first batch to view live data.',
+            icon: Icons.inventory_2_rounded,
+            actionLabel: 'Create',
+            primary: true,
+          )
+        else
+          ...batchItems.take(5).toList().asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
+            return Padding(
+              padding: EdgeInsets.only(bottom: index == 4 ? 0 : 12),
+              child: _batchCard(
+                id: item.batchCode,
+                subtitle:
+                    '${item.cropType} · ${item.quantity} · ${item.status}',
+                icon: item.status == 'in_transit'
+                    ? Icons.local_shipping_rounded
+                    : Icons.eco_rounded,
+                actionLabel: item.status == 'in_transit' ? 'Track' : 'Details',
+                primary: index == 0,
+              ),
+            );
+          }),
       ],
     );
   }
@@ -447,20 +586,29 @@ class _RoleShellState extends State<RoleShell> {
   }
 
   Widget _distributorDashboard() {
+    final alertItems = _dashboard?.alerts ?? const <String>[];
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _premiumBanner(
-          title: 'Distribution Control',
-          subtitle: 'Vehicles available: 18/24 · Route health: Stable',
+          title: _dashboard?.summaryTitle ?? 'Distribution Control',
+          subtitle:
+              _dashboard?.summarySubtitle ??
+              'Vehicles available: 18/24 · Route health: Stable',
           icon: Icons.local_shipping_rounded,
         ),
         const SizedBox(height: 12),
         _metricCard('Warehouse Capacity', '66%'),
         const SizedBox(height: 12),
-        _alertCard('Spoilage risk alert on route B2'),
-        const SizedBox(height: 12),
-        _alertCard('Suggested route: NH44 (faster by 18 min)'),
+        if (alertItems.isEmpty)
+          _alertCard('No live alerts right now')
+        else
+          ...alertItems.take(3).toList().asMap().entries.map((entry) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: entry.key == 2 ? 0 : 12),
+              child: _alertCard(entry.value),
+            );
+          }),
       ],
     );
   }
@@ -517,22 +665,31 @@ class _RoleShellState extends State<RoleShell> {
   }
 
   Widget _inventory() {
+    final items =
+        _dashboard?.inventoryItems ?? const <DashboardInventoryItem>[];
     return GridView.count(
       padding: const EdgeInsets.all(16),
       crossAxisCount: 2,
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 0.95,
-      children: List.generate(4, (index) {
-        final expiring = index.isEven;
+      children: List.generate(items.isEmpty ? 4 : items.length, (index) {
+        final item = items.isEmpty
+            ? DashboardInventoryItem(
+                name: 'Product ${index + 1}',
+                demandSignal: 'AI demand ↑',
+                expiryHint: index.isEven
+                    ? 'Expires in 2 days'
+                    : 'Expires in 5 days',
+              )
+            : items[index];
+        final expiring =
+            item.expiryHint.contains('2') || item.expiryHint.contains('1');
         return GlassCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Product ${index + 1}',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text(item.name, style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -542,11 +699,11 @@ class _RoleShellState extends State<RoleShell> {
                       ? AppPalette.darkSelected
                       : AppPalette.lightSelected,
                 ),
-                child: const Text('AI demand ↑'),
+                child: Text(item.demandSignal),
               ),
               const SizedBox(height: 8),
               Text(
-                expiring ? 'Expires in 2 days' : 'Expires in 5 days',
+                item.expiryHint,
                 style: TextStyle(
                   color: expiring ? Colors.redAccent : AppPalette.brandGreen,
                 ),
@@ -559,16 +716,33 @@ class _RoleShellState extends State<RoleShell> {
   }
 
   Widget _incoming() {
+    final incoming = _dashboard?.recentBatches ?? const <DashboardBatchItem>[];
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _batchCard(
-          id: 'Incoming #0x882A',
-          subtitle: 'ETA 2h 15m',
-          icon: Icons.move_down_rounded,
-          actionLabel: 'View',
-          primary: true,
-        ),
+        if (incoming.isEmpty)
+          _batchCard(
+            id: 'No incoming batches',
+            subtitle: 'Live incoming data will appear here',
+            icon: Icons.move_down_rounded,
+            actionLabel: 'Refresh',
+            primary: true,
+          )
+        else
+          ...incoming
+              .take(3)
+              .map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _batchCard(
+                    id: item.batchCode,
+                    subtitle: '${item.cropType} · ${item.status}',
+                    icon: Icons.move_down_rounded,
+                    actionLabel: 'View',
+                    primary: true,
+                  ),
+                ),
+              ),
       ],
     );
   }
@@ -629,37 +803,58 @@ class _RoleShellState extends State<RoleShell> {
   }
 
   Widget _orders() {
+    final orders = _dashboard?.orders ?? const <String>[];
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        GlassCard(
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? AppPalette.darkSelected
-                      : AppPalette.lightSelected,
+        if (orders.isEmpty)
+          GlassCard(
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? AppPalette.darkSelected
+                        : AppPalette.lightSelected,
+                  ),
+                  child: const Icon(Icons.verified_rounded),
                 ),
-                child: const Icon(Icons.verified_rounded),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Order #A290'),
-                    SizedBox(height: 4),
-                    Text('Delivered · Trust certificate included'),
-                  ],
+                const SizedBox(width: 12),
+                const Expanded(child: Text('No live orders yet')),
+              ],
+            ),
+          )
+        else
+          ...orders
+              .take(3)
+              .map(
+                (order) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: GlassCard(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? AppPalette.darkSelected
+                                : AppPalette.lightSelected,
+                          ),
+                          child: const Icon(Icons.verified_rounded),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(order)),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -692,7 +887,12 @@ class _RoleShellState extends State<RoleShell> {
                   Expanded(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: const LinearProgressIndicator(value: 0.84),
+                      child: LinearProgressIndicator(
+                        value: ((_dashboard?.freshnessScore ?? 84) / 100).clamp(
+                          0.0,
+                          1.0,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -701,11 +901,17 @@ class _RoleShellState extends State<RoleShell> {
           ),
         ),
         const SizedBox(height: 12),
-        _alertCard('Spoilage alert: humidity exceeded in lot #18'),
+        _alertCard(
+          _dashboard?.alerts.isNotEmpty == true
+              ? _dashboard!.alerts.first
+              : 'Spoilage alert: humidity exceeded in lot #18',
+        ),
         const SizedBox(height: 12),
         GlassCard(
           child: Text(
-            'Recommended: shift lot #18 to cold storage B and dispatch within 6h.',
+            _dashboard?.recommendation.isNotEmpty == true
+                ? _dashboard!.recommendation
+                : 'Recommended: shift lot #18 to cold storage B and dispatch within 6h.',
           ),
         ),
       ],
@@ -720,7 +926,9 @@ class _RoleShellState extends State<RoleShell> {
       children: [
         _premiumBanner(
           title: 'Profile & Security',
-          subtitle: 'Verification complete · Wallet linked',
+          subtitle: widget.session.isVerified
+              ? 'Verification complete · Wallet linked'
+              : 'Verification pending · Wallet linked',
           icon: Icons.verified_user_rounded,
         ),
         const SizedBox(height: 12),
@@ -729,17 +937,32 @@ class _RoleShellState extends State<RoleShell> {
             children: [
               _profileRow(
                 widget.i18n.t('verification_status'),
-                'Verified',
+                widget.session.isVerified ? 'Verified' : 'Pending',
                 icon: Icons.check_circle_rounded,
               ),
               _profileRow(
                 widget.i18n.t('wallet_address'),
-                '0xA49c...82F9',
+                widget.session.walletAddress,
                 icon: Icons.account_balance_wallet_rounded,
               ),
               _profileRow(
+                'Name',
+                widget.session.name,
+                icon: Icons.person_rounded,
+              ),
+              _profileRow(
+                'Phone',
+                widget.session.phone,
+                icon: Icons.phone_rounded,
+              ),
+              _profileRow(
+                'Role',
+                widget.session.role.title,
+                icon: Icons.badge_rounded,
+              ),
+              _profileRow(
                 widget.i18n.t('trust_score'),
-                '82',
+                '${_dashboard?.trustScore ?? 82}',
                 icon: Icons.shield_rounded,
               ),
               const SizedBox(height: 8),
@@ -789,12 +1012,23 @@ class _RoleShellState extends State<RoleShell> {
         children: [
           Icon(icon, size: 18),
           const SizedBox(width: 8),
-          Expanded(child: Text(label)),
-          Text(
-            value,
-            style: const TextStyle(
-              fontFamily: 'Space Grotesk',
-              fontWeight: FontWeight.w700,
+          Expanded(
+            flex: 4,
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 6,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              maxLines: 2,
+              softWrap: true,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Space Grotesk',
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],

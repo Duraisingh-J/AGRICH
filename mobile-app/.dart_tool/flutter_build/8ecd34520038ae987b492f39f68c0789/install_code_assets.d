@@ -1,0 +1,1 @@
+ C:\\VSC\\AGRI_FINAL\\AGRICH\\mobile-app\\.dart_tool\\flutter_build\\8ecd34520038ae987b492f39f68c0789\\native_assets.json: 

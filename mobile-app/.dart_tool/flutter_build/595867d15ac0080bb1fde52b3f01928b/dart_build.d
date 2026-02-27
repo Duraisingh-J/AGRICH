@@ -1,0 +1,1 @@
+ C:\\VSC\\AGRI_FINAL\\AGRICH\\mobile-app\\.dart_tool\\flutter_build\\595867d15ac0080bb1fde52b3f01928b\\dart_build_result.json: 

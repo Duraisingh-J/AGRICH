@@ -54,6 +54,18 @@ class Settings(BaseSettings):
     listener_heartbeat_cycles: int = Field(default=20, alias="LISTENER_HEARTBEAT_CYCLES")
     ipfs_api_url: str = Field(default="http://localhost:5001", alias="IPFS_API_URL")
 
+    otp_provider: Literal["debug", "twilio", "fast2sms"] = Field(default="debug", alias="OTP_PROVIDER")
+    otp_ttl_seconds: int = Field(default=300, alias="OTP_TTL_SECONDS")
+    otp_max_attempts: int = Field(default=5, alias="OTP_MAX_ATTEMPTS")
+
+    twilio_account_sid: str | None = Field(default=None, alias="TWILIO_ACCOUNT_SID")
+    twilio_auth_token: str | None = Field(default=None, alias="TWILIO_AUTH_TOKEN")
+    twilio_from_number: str | None = Field(default=None, alias="TWILIO_FROM_NUMBER")
+
+    fast2sms_api_key: str | None = Field(default=None, alias="FAST2SMS_API_KEY")
+    fast2sms_sender_id: str = Field(default="FSTSMS", alias="FAST2SMS_SENDER_ID")
+    fast2sms_route: str = Field(default="q", alias="FAST2SMS_ROUTE")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
