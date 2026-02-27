@@ -6,3 +6,8 @@ numpy
 pandas
 prophet
 python-multipart
+sentence-transformers
+faiss-cpu
+google-generativeai
+python-dotenv
+groq

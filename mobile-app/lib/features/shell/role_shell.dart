@@ -41,6 +41,15 @@ class _RoleShellState extends State<RoleShell> {
     defaultValue:
         'http://127.0.0.1:8000/api/v1,http://10.0.2.2:8000/api/v1,http://localhost:8000/api/v1',
   );
+  static const String _aiBaseUrl = String.fromEnvironment(
+    'AI_SERVICE_BASE_URL',
+    defaultValue: 'http://127.0.0.1:8001',
+  );
+  static const String _aiBaseUrls = String.fromEnvironment(
+    'AI_SERVICE_BASE_URLS',
+    defaultValue:
+        'http://127.0.0.1:8001,http://10.0.2.2:8001,http://localhost:8001',
+  );
 
   int _index = 0;
   DashboardPayload? _dashboard;
@@ -131,6 +140,92 @@ class _RoleShellState extends State<RoleShell> {
     return '$normalizedBase/api/v1$normalizedPath';
   }
 
+  List<String> _aiBaseUrlCandidates() {
+    final seen = <String>{};
+    final candidates = <String>[];
+
+    void addCandidate(String value) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || seen.contains(trimmed)) {
+        return;
+      }
+      seen.add(trimmed);
+      candidates.add(trimmed);
+    }
+
+    addCandidate(_aiBaseUrl);
+    for (final item in _aiBaseUrls.split(',')) {
+      addCandidate(item);
+    }
+    return candidates;
+  }
+
+  String _aiUrl(String baseUrl) {
+    final normalizedBase = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    if (normalizedBase.endsWith('/chat')) {
+      return normalizedBase;
+    }
+    return '$normalizedBase/chat';
+  }
+
+  String _roleApiValue(AppRole role) {
+    switch (role) {
+      case AppRole.farmer:
+        return 'farmer';
+      case AppRole.distributor:
+        return 'distributor';
+      case AppRole.retailer:
+        return 'retailer';
+      case AppRole.consumer:
+        return 'consumer';
+    }
+  }
+
+  Future<String> _askAiService(String message) async {
+    for (final baseUrl in _aiBaseUrlCandidates()) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse(_aiUrl(baseUrl)),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'role': _roleApiValue(widget.session.role),
+                'message': message,
+                'session_id': widget.session.userId,
+                'language': widget.i18n.lang,
+              }),
+            )
+            .timeout(const Duration(seconds: 20));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final body = jsonDecode(response.body) as Map<String, dynamic>;
+          final reply = body['response']?.toString().trim();
+          if (reply != null && reply.isNotEmpty) {
+            return reply;
+          }
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+
+    return 'AI service is unreachable. Start ai-service and use adb reverse tcp:8001 tcp:8001 for USB device.';
+  }
+
+  void _openAiAssistant() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => _AiAssistantPage(
+          onSend: _askAiService,
+          roleTitle: widget.session.role.title,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tabs = _tabs();
@@ -173,17 +268,7 @@ class _RoleShellState extends State<RoleShell> {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: Theme.of(context).colorScheme.secondary,
         foregroundColor: Theme.of(context).colorScheme.onSecondary,
-        onPressed: () {
-          showModalBottomSheet<void>(
-            context: context,
-            builder: (_) => const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'AI Assistant ready. Voice command is planned for Phase 2.',
-              ),
-            ),
-          );
-        },
+        onPressed: _openAiAssistant,
         icon: const Icon(Icons.auto_awesome_rounded),
         label: const Text('AI'),
       ),
@@ -1274,4 +1359,161 @@ class _LineChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _AiAssistantPage extends StatefulWidget {
+  const _AiAssistantPage({required this.onSend, required this.roleTitle});
+
+  final Future<String> Function(String message) onSend;
+  final String roleTitle;
+
+  @override
+  State<_AiAssistantPage> createState() => _AiAssistantPageState();
+}
+
+class _AiAssistantPageState extends State<_AiAssistantPage> {
+  final TextEditingController _controller = TextEditingController();
+  final List<_AiMessage> _messages = [];
+  bool _isSending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages.add(
+      _AiMessage(
+        text:
+            'AGRICHAIN AI is ready for ${widget.roleTitle}. Ask anything about pricing, yield, logistics, or traceability.',
+        isUser: false,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (_isSending) {
+      return;
+    }
+    final text = _controller.text.trim();
+    if (text.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _messages.add(_AiMessage(text: text, isUser: true));
+      _controller.clear();
+      _isSending = true;
+    });
+
+    final reply = await widget.onSend(text);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _messages.add(_AiMessage(text: reply, isUser: false));
+      _isSending = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Scaffold(
+      appBar: AppBar(title: const Text('AI Assistant')),
+      body: SafeArea(
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AGRICHAIN AI - ${widget.roleTitle}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: _messages.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = _messages[index];
+                      final align = item.isUser
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft;
+                      final bg = item.isUser
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest;
+                      final fg = item.isUser
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : Theme.of(context).colorScheme.onSurface;
+                      return Align(
+                        alignment: align,
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: bg,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(item.text, style: TextStyle(color: fg)),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
+                        decoration: const InputDecoration(
+                          hintText: 'Ask AI... ',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 92,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 48),
+                          maximumSize: const Size(120, 48),
+                        ),
+                        onPressed: _isSending ? null : _send,
+                        child: Text(_isSending ? '...' : 'Send'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AiMessage {
+  const _AiMessage({required this.text, required this.isUser});
+
+  final String text;
+  final bool isUser;
 }

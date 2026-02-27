@@ -1,8 +1,10 @@
 import joblib
 import numpy as np
+import os
 
 # Load trained model
-model = joblib.load("models/yield_model.pkl")
+model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "yield_model.pkl"))
+model = joblib.load(model_path)
 
 def estimate_yield(land_size, rainfall, soil_quality, fertilizer, disease_severity):
 

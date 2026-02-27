@@ -1,85 +1,149 @@
-import google.generativeai as genai
 import os
+import logging
 from dotenv import load_dotenv
+try:
+    from groq import Groq
+except Exception:
+    Groq = None
 
+# --------------------------------------------------
+# Load Environment
+# --------------------------------------------------
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+API_KEY = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=API_KEY) if (Groq is not None and API_KEY) else None
 
-model = genai.GenerativeModel("gemini-flash-latest")
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
+if client is None:
+    logger.warning("LLM ENGINE running in fallback mode (Groq package/key unavailable)")
+else:
+    logger.info("LLM ENGINE (GROQ) LOADED SUCCESSFULLY")
 
+# --------------------------------------------------
+# Language Support
+# --------------------------------------------------
+LANGUAGE_MAP = {
+    "en": {
+        "instruction": "Respond strictly in English.",
+        "decision": "Final Decision",
+        "confidence": "Confidence"
+    },
+    "ta": {
+        "instruction": "Respond strictly in Tamil.",
+        "decision": "இறுதி தீர்மானம்",
+        "confidence": "நம்பிக்கை"
+    },
+    "hi": {
+        "instruction": "Respond strictly in Hindi.",
+        "decision": "अंतिम निर्णय",
+        "confidence": "विश्वास स्तर"
+    },
+    "te": {
+        "instruction": "Respond strictly in Telugu.",
+        "decision": "చివరి నిర్ణయం",
+        "confidence": "నమ్మకం"
+    },
+    "ml": {
+        "instruction": "Respond strictly in Malayalam.",
+        "decision": "അന്തിമ തീരുമാനം",
+        "confidence": "വിശ്വാസം"
+    },
+    "kn": {
+        "instruction": "Respond strictly in Kannada.",
+        "decision": "ಅಂತಿಮ ತೀರ್ಮಾನ",
+        "confidence": "ನಂಬಿಕೆ"
+    }
+}
+
+# --------------------------------------------------
+# Generate LLM Response
+# --------------------------------------------------
 def generate_llm_response(
     role,
     message,
-    context,
+    context="",
     system_data="",
     history=None,
-    final_decision=None,
-    confidence=None,
+    final_decision="ANALYZING",
+    confidence=50,
     language="en"
 ):
 
-    language_map = {
-        "en": {
-            "instruction": "Respond in English.",
-            "decision_label": "FINAL DECISION",
-            "confidence_label": "CONFIDENCE SCORE"
-        },
-        "ta": {
-            "instruction": "Respond in Tamil.",
-            "decision_label": "இறுதி தீர்மானம்",
-            "confidence_label": "நம்பிக்கை மதிப்பீடு"
-        },
-        "hi": {
-            "instruction": "Respond in Hindi.",
-            "decision_label": "अंतिम निर्णय",
-            "confidence_label": "विश्वास स्तर"
-        },
-        "te": {
-            "instruction": "Respond in Telugu.",
-            "decision_label": "చివరి నిర్ణయం",
-            "confidence_label": "నమ్మక స్థాయి"
-        },
-        "ml": {
-            "instruction": "Respond in Malayalam.",
-            "decision_label": "അന്തിമ തീരുമാനം",
-            "confidence_label": "വിശ്വാസ നില"
-        },
-        "kn": {
-            "instruction": "Respond in Kannada.",
-            "decision_label": "ಅಂತಿಮ ತೀರ್ಮಾನ",
-            "confidence_label": "ನಂಬಿಕೆ ಮಟ್ಟ"
-        }
-    }
+    lang = LANGUAGE_MAP.get(language, LANGUAGE_MAP["en"])
 
-    lang_data = language_map.get(language, language_map["en"])
-
+    # Strongly Controlled Prompt
     prompt = f"""
 You are AGRICHAIN AI Decision Engine for the {role} role.
 
-{lang_data['instruction']}
+{lang['instruction']}
 
-Respond in:
-• One-line summary
-• 2–3 short bullet points (max 12 words each)
-• Keep under 80 words
-
-Use numeric values where possible.
+Follow these rules strictly:
+- Provide 3 to 5 short bullet points.
+- Each bullet max 18 words.
+- Use numeric values from system data.
+- Do NOT repeat decision inside bullets.
+- Do NOT exceed 120 words.
+- Do NOT add extra sections.
 
 System Data:
 {system_data}
+
+Context:
+{context}
 
 User Question:
 {message}
 """
 
-    response = model.generate_content(prompt)
+    if client is None:
+        fallback = (
+            "• Market data analyzed.\n"
+            "• Price trend evaluated.\n"
+            "• Risk factors considered."
+        )
+        return (
+            f"{fallback}\n\n"
+            f"{lang['decision']}: {final_decision}\n"
+            f"{lang['confidence']}: {confidence}%"
+        )
 
-    # Append translated decision block manually
-    final_output = f"""{response.text.strip()}
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are a precise agricultural decision assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # lower for stable academic demo
+            max_tokens=400,
+        )
 
-{lang_data['decision_label']}: {final_decision}
-{lang_data['confidence_label']}: {confidence}%"""
+        explanation = completion.choices[0].message.content.strip()
 
-    return final_output
+        # Enforce correct decision and confidence labels manually
+        final_output = (
+            f"{explanation}\n\n"
+            f"{lang['decision']}: {final_decision}\n"
+            f"{lang['confidence']}: {confidence}%"
+        )
+
+        return final_output
+
+    except Exception as e:
+        logger.error(f"GROQ ERROR: {e}")
+
+        # Safe fallback (multilingual safe)
+        fallback = (
+            "• Market data analyzed.\n"
+            "• Price trend evaluated.\n"
+            "• Risk factors considered."
+        )
+
+        return (
+            f"{fallback}\n\n"
+            f"{lang['decision']}: {final_decision}\n"
+            f"{lang['confidence']}: {confidence}%"
+        )
