@@ -10,8 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.auth import router as auth_router
+from app.api.batch import router as batch_router
+from app.api.qr import router as qr_router
 from app.config import get_settings
-from app.db.database import engine
+from app.db.database import engine, init_models
 
 
 def configure_logging() -> None:
@@ -30,6 +32,7 @@ async def lifespan(_: FastAPI):
 
     configure_logging()
     logger = logging.getLogger("app.lifecycle")
+    await init_models()
     logger.info("Starting AGRICHAIN backend")
     try:
         yield
@@ -58,6 +61,8 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth_router, prefix=settings.api_prefix)
+    app.include_router(batch_router, prefix=settings.api_prefix)
+    app.include_router(qr_router, prefix=settings.api_prefix)
 
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:

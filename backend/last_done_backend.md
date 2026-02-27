@@ -107,3 +107,108 @@ Phase 2 scaffolding:
 - service layer modules (`blockchain_service`, `ipfs_service`, `ai_service`, `auth_service`, `trust_service`)
 - remaining models (`batch`, `transaction`)
 - workers (`blockchain_listener`, `event_processor`)
+
+---
+
+## Phase 2 Summary (Completed)
+
+**Date:** 2026-02-27
+
+Extended the backend with clean architecture boundaries: thin API layer, reusable dependencies, and service-first orchestration.
+
+### 1) Role-Based Access Control
+- Added reusable auth/role dependency module: `backend/app/utils/roles.py`
+- Implemented `get_current_user`:
+  - extracts bearer JWT
+  - validates access token type
+  - resolves and returns DB user
+- Implemented `require_role(allowed_roles)`:
+  - reusable role guard for routers
+  - returns HTTP 403 on insufficient permissions
+
+### 2) Service Layer Skeletons
+Created service package and production-structured stubs:
+
+- `backend/app/services/auth_service.py`
+  - Aadhaar hashing
+  - bcrypt password hash/verify (threadpool-safe)
+  - JWT create/decode
+  - token pair generation
+- `backend/app/services/blockchain_service.py`
+  - Web3.py-ready structure (lazy client init)
+  - `mint_batch(batch_id, metadata_cid)`
+  - `transfer_ownership(batch_id, from_addr, to_addr)`
+  - `get_batch_history(batch_id)`
+  - `verify_transaction(tx_hash)`
+  - currently mocked responses with realistic return shape
+- `backend/app/services/ipfs_service.py`
+  - `upload_json(data)`
+  - `upload_file(file_bytes)`
+  - mocked CID generation
+- `backend/app/services/ai_service.py`
+  - async stubs: `predict_price`, `detect_disease`, `spoilage_risk`, `fraud_score`
+- `backend/app/services/trust_service.py`
+  - async stubs: `calculate_trust_score`, `update_trust_on_event`
+
+### 3) Product Batch Model
+- Added `backend/app/models/batch.py`
+- Implemented fields:
+  - `id` (UUID)
+  - `batch_code` (unique)
+  - `farmer_id` (FK -> users)
+  - `current_owner_id` (FK -> users)
+  - `crop_type`
+  - `quantity`
+  - `ipfs_metadata_cid`
+  - `blockchain_tx_hash`
+  - `status` enum (`created`, `in_transit`, `delivered`, etc.)
+  - `created_at`, `updated_at`
+- Added indexes for query-critical columns.
+
+### 4) Batch Lifecycle APIs
+- Added `backend/app/api/batch.py`
+
+Implemented endpoints:
+- `POST /api/v1/batches/create` (Farmer only)
+  - role guard validation
+  - uploads metadata to IPFS
+  - mints blockchain batch
+  - saves batch record
+  - returns batch + QR payload
+- `POST /api/v1/batches/{batch_id}/transfer` (Distributor/Retailer)
+  - role guard validation
+  - verifies current ownership
+  - calls blockchain ownership transfer
+  - updates owner + status
+- `GET /api/v1/batches/{batch_id}`
+  - authenticated retrieval of full batch details
+
+### 5) QR Module
+- Added `backend/app/api/qr.py`
+- Implemented:
+  - `generate_batch_qr(batch_id)`
+  - `decode_qr(data)`
+- Enforced URI format:
+  - `agrichain://batch/<uuid>`
+
+### 6) Router Registration + Auth Refactor
+- Updated `backend/app/main.py` to register:
+  - batch router
+  - qr router
+- Refactored `backend/app/api/auth.py` to delegate security logic to `auth_service`:
+  - password hashing/verification
+  - token creation/decoding
+
+### 7) Validation
+- Syntax compilation passed after Phase 2:
+  - `python -m compileall backend/app`
+
+### Current Backend Status
+- Phase 1 ✅
+- Phase 2 ✅
+
+### Suggested Next Step (Phase 3)
+- remaining domain routers (`farmer`, `distributor`, `retailer`, `consumer`)
+- transaction model + lifecycle records
+- workers (`blockchain_listener`, `event_processor`)
+- Alembic migration scripts for `users` and `batches`
