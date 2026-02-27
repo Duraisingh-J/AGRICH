@@ -1,0 +1,17 @@
+Distributors should optimize routes to reduce fuel consumption and delivery time.
+
+Cold-chain temperature must remain stable to prevent spoilage.
+
+Temperature deviation above safe threshold increases spoilage probability.
+
+Faster delivery reduces quality degradation for perishable crops.
+
+Vehicle capacity should match load size to reduce logistics cost.
+
+Spoilage risk increases when transport time exceeds recommended limits.
+
+Warehouse humidity control prevents fungal growth.
+
+Real-time tracking improves transparency and trust in the supply chain.
+
+Shorter routes reduce carbon footprint and operational cost.

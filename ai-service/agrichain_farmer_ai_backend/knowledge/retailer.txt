@@ -1,0 +1,17 @@
+Retailers should monitor demand trends before placing bulk orders.
+
+High predicted demand requires early reordering to prevent stockout.
+
+Perishable goods require fast turnover to reduce waste.
+
+Slow-moving inventory increases storage cost and wastage.
+
+Festival seasons significantly increase demand for certain crops.
+
+Dynamic pricing improves profitability during high demand.
+
+Tracking expiry dates helps reduce waste.
+
+If predicted price from distributors increases, adjust retail price accordingly.
+
+Retailers should avoid overstocking during low demand periods.
