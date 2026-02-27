@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     jwt_refresh_token_expire_minutes: int = 60 * 24 * 7
 
     web3_rpc_url: str = Field(default="http://localhost:8545", alias="WEB3_RPC_URL")
+    batch_contract_address: str | None = Field(default=None, alias="BATCH_CONTRACT_ADDRESS")
+    batch_contract_abi_path: str | None = Field(default=None, alias="BATCH_CONTRACT_ABI_PATH")
+    blockchain_default_sender: str | None = Field(default=None, alias="BLOCKCHAIN_DEFAULT_SENDER")
     ipfs_api_url: str = Field(default="http://localhost:5001", alias="IPFS_API_URL")
 
 

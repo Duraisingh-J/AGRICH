@@ -8,12 +8,16 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api.auth import router as auth_router
 from app.api.batch import router as batch_router
 from app.api.qr import router as qr_router
 from app.config import get_settings
-from app.db.database import engine, init_models
+from app.db.database import SessionLocal, engine
+from app.services.blockchain_service import BlockchainService
+from app.services.cache_service import CacheService
+from app.services.ipfs_service import IPFSService
 
 
 def configure_logging() -> None:
@@ -32,7 +36,6 @@ async def lifespan(_: FastAPI):
 
     configure_logging()
     logger = logging.getLogger("app.lifecycle")
-    await init_models()
     logger.info("Starting AGRICHAIN backend")
     try:
         yield
@@ -64,11 +67,44 @@ def create_app() -> FastAPI:
     app.include_router(batch_router, prefix=settings.api_prefix)
     app.include_router(qr_router, prefix=settings.api_prefix)
 
+    blockchain_service = BlockchainService()
+    cache_service = CacheService()
+    ipfs_service = IPFSService()
+
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:
         """Service liveness endpoint."""
 
         return {"status": "ok"}
+
+    @app.get("/system/health/deep", tags=["system"])
+    async def deep_health_check() -> dict[str, Any]:
+        """Detailed health checks for database, blockchain, Redis, and IPFS."""
+
+        database_healthy = False
+        try:
+            async with SessionLocal() as session:
+                await session.execute(text("SELECT 1"))
+                database_healthy = True
+        except Exception:
+            logging.getLogger("app.health").exception("Database health check failed")
+
+        blockchain_healthy = await blockchain_service.is_blockchain_healthy()
+        redis_healthy = await cache_service.is_healthy()
+        ipfs_healthy = await ipfs_service.is_healthy()
+
+        services = {
+            "database": {"healthy": database_healthy},
+            "blockchain": {"healthy": blockchain_healthy},
+            "redis": {"healthy": redis_healthy},
+            "ipfs": {"healthy": ipfs_healthy},
+        }
+        overall = all(item["healthy"] for item in services.values())
+
+        return {
+            "status": "ok" if overall else "degraded",
+            "services": services,
+        }
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:

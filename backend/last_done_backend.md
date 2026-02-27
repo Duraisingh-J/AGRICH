@@ -212,3 +212,96 @@ Implemented endpoints:
 - transaction model + lifecycle records
 - workers (`blockchain_listener`, `event_processor`)
 - Alembic migration scripts for `users` and `batches`
+
+---
+
+## Phase 3 Summary (Completed)
+
+**Date:** 2026-02-27
+
+Upgraded AGRICHAIN backend for blockchain-ready architecture with migration-first DB management, event processing workers, Redis integration, and deep observability.
+
+### 1) Real Web3 Integration (with safe fallback)
+- Updated `backend/app/services/blockchain_service.py` to support lazy real Web3 usage:
+  - `is_blockchain_healthy()`
+  - `mint_batch(batch_id, metadata_cid)`
+  - `transfer_ownership(batch_id, from_addr, to_addr)`
+  - `get_batch_history(batch_id)`
+  - `verify_transaction(tx_hash)`
+  - `fetch_events(from_block)` for listener polling
+- All methods use async-safe execution (`run_in_threadpool`) for blocking Web3 operations.
+- If Web3/contract/config is unavailable, service gracefully falls back to mocked responses.
+
+### 2) Blockchain Config Utility
+- Added `backend/app/utils/blockchain_config.py`.
+- Responsibilities implemented:
+  - cached Web3 instance initialization from `WEB3_RPC_URL`
+  - ABI loading from env path (`BATCH_CONTRACT_ABI_PATH`)
+  - contract address validation (`BATCH_CONTRACT_ADDRESS`)
+  - cached `get_contract()` helper
+- Extended `backend/app/config.py` with:
+  - `BATCH_CONTRACT_ADDRESS`
+  - `BATCH_CONTRACT_ABI_PATH`
+  - `BLOCKCHAIN_DEFAULT_SENDER`
+
+### 3) Alembic Migrations (Async)
+- Added migration stack:
+  - `backend/alembic.ini`
+  - `backend/db/migrations/env.py` (async engine config)
+  - `backend/db/migrations/script.py.mako`
+  - `backend/db/migrations/versions/0001_initial_users_batches.py`
+- Initial migration includes:
+  - `users` table
+  - `batches` table
+  - enums, FK constraints, indexes, and unique constraints
+- Added programmatic migration runner:
+  - `backend/scripts/init_db.py`
+
+### 4) Removed `create_all` Bootstrapping
+- Removed ORM auto-create behavior from runtime startup.
+- `backend/app/db/database.py` now contains only engine/session/dependency primitives.
+- Schema creation responsibility moved to Alembic migrations (production-safe path).
+
+### 5) Blockchain Event Worker Layer
+- Added `backend/app/workers/blockchain_listener.py`:
+  - async polling loop
+  - resilient retry/backoff
+  - graceful shutdown support
+  - listens for contract events and dispatches to processor
+- Added `backend/app/workers/event_processor.py`:
+  - transaction-safe DB update flow
+  - idempotency guard for duplicate events
+  - handles `BatchMinted` + `OwnershipTransferred`
+  - updates batch state and triggers trust score update
+
+### 6) Redis Light Integration
+- Added `backend/app/services/cache_service.py`:
+  - lazy Redis client initialization
+  - graceful fallback when Redis unavailable
+  - batch lookup cache helpers
+  - rate limiting helper (`check_rate_limit`)
+
+### 7) Deep Health Endpoint
+- Added `GET /system/health/deep` in `backend/app/main.py`.
+- Reports structured health for:
+  - database
+  - blockchain
+  - redis
+  - IPFS
+- Added IPFS connectivity probe in `backend/app/services/ipfs_service.py` via `is_healthy()`.
+
+### 8) Validation
+- Phase 3 modules compiled successfully:
+  - `python -m compileall backend/app backend/scripts backend/db/migrations`
+- Confirmed no `Base.metadata.create_all` usage remains.
+
+### Current Backend Status
+- Phase 1 ✅
+- Phase 2 ✅
+- Phase 3 ✅ (implementation complete)
+
+### Suggested Next Step (Phase 4)
+- wire blockchain listener lifecycle into app startup/shutdown task management
+- add event persistence table for cross-restart idempotency
+- add contract-aware integration tests against local Hardhat node
+- add CI job for migration + validator checks

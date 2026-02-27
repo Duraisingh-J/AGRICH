@@ -3,6 +3,8 @@
 import hashlib
 import json
 
+import httpx
+
 from app.config import get_settings
 
 
@@ -23,3 +25,20 @@ class IPFSService:
 
         digest = hashlib.sha256(file_bytes).hexdigest()
         return f"bafy{digest[:40]}"
+
+    async def is_healthy(self) -> bool:
+        """Check basic IPFS API connectivity health."""
+
+        endpoints = [
+            f"{self.api_url}/api/v0/version",
+            f"{self.api_url}/version",
+        ]
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for endpoint in endpoints:
+                try:
+                    response = await client.post(endpoint)
+                    if response.status_code < 500:
+                        return True
+                except Exception:
+                    continue
+        return False
