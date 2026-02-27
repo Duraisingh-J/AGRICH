@@ -21,11 +21,13 @@ class Base(DeclarativeBase):
 settings = get_settings()
 database_url_normalized = settings.database_url.lower()
 
-# Proper SSL handling for Neon + asyncpg
+# Proper Neon SSL handling
 connect_args: dict = {}
 
 if "sslmode=require" in database_url_normalized:
     ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False  # important for Neon on some hosts
+    ssl_context.verify_mode = ssl.CERT_REQUIRED
     connect_args["ssl"] = ssl_context
 
 engine: AsyncEngine = create_async_engine(
@@ -33,6 +35,7 @@ engine: AsyncEngine = create_async_engine(
     echo=False,
     future=True,
     pool_pre_ping=True,
+    pool_recycle=300,   # helps with Neon connections
     connect_args=connect_args,
 )
 
