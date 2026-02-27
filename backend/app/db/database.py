@@ -18,12 +18,18 @@ class Base(DeclarativeBase):
 
 
 settings = get_settings()
+database_url_normalized = settings.database_url.lower()
+
+connect_args: dict[str, bool] = {}
+if "sslmode=require" in database_url_normalized:
+    connect_args = {"ssl": True}
 
 engine: AsyncEngine = create_async_engine(
     settings.database_url,
     echo=False,
     future=True,
     pool_pre_ping=True,
+    connect_args=connect_args,
 )
 
 SessionLocal = async_sessionmaker(
